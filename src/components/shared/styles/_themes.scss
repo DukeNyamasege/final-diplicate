@@ -99,7 +99,7 @@
         --purchase-disabled-section: #{constants.$color-grey-4};
 
         // Buttons
-        --button-primary-default: var(--brand-red-coral);
+        --button-primary-default: #FFA500;
         --button-secondary-default: #{constants.$color-grey-1};
         --button-tertiary-default: transparent;
         --button-primary-light-default: #{constants.$alpha-color-red-2};
@@ -243,7 +243,7 @@
         --purchase-disabled-section: #{constants.$color-black};
 
         // Buttons
-        --button-primary-default: var(--brand-red-coral);
+        --button-primary-default: #FFA500;
         --button-secondary-default: #{constants.$color-grey-7};
         --button-tertiary-default: transparent;
         --button-primary-light-default: #{constants.$alpha-color-red-2};

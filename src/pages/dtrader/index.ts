@@ -1,1 +1,1 @@
-export { default } from './dtrader';
+export { default } from './dtrader.tsx';
