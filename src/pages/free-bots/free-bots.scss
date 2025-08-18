@@ -70,7 +70,7 @@
     &:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-        border-color: var(--brand-blue);
+        border-color: #FFA500;
     }
 
     &__header {
@@ -156,13 +156,14 @@
         border-radius: 6px;
         font-weight: 600;
         transition: all 0.3s ease;
-        background: #3B6FA2 !important; // Navigation bar color
-        color: #ffffff !important;
+        background: #FFA500 !important; // Match primary/navigation color
+        color: #000000 !important; // Black text on orange for readability
         border: none !important;
 
         &:hover {
             transform: translateY(-1px);
-            background: #2E5A8A !important; // Darker shade on hover
+            background: #e69500 !important; // Slightly darker orange on hover
+            color: #000000 !important;
         }
     }
 }
@@ -178,7 +179,7 @@
         border-color: var(--border-normal);
 
         &:hover {
-            border-color: var(--brand-blue);
+            border-color: #FFA500;
         }
 
         &__badge {
