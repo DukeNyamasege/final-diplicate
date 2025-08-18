@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { observer } from 'mobx-react-lite';
+import { getAppId, getSocketURL } from '@/components/shared/utils/config/config';
 import './copy-trading.scss';
 
 const CopyTrading = observer(() => {
@@ -178,90 +179,126 @@ const CopyTrading = observer(() => {
         };
 
         // WebSocket functionality
+            // Display CR if user is currently on a demo login in local storage
+            try {
+                const active_loginid = localStorage.getItem('active_loginid') || '';
+                if (active_loginid && active_loginid.startsWith('VR')) {
+                    const cr = (localStorage.getItem('cr_loginid') || '').toString();
+                    const el = document.getElementById('login-id');
+                    if (el) el.textContent = cr || 'CR — not linked yet';
+                }
+            } catch {}
+
         const webSS = () => {
-            const APP_ID = localStorage.getItem('APP_ID') || '64224';
+            // Build token list from localStorage accounts mapping
             const accounts_list = JSON.parse(localStorage.getItem('accountsList') || '{}');
-            const keys = Object.keys(accounts_list);
-            const tokenz: string[] = [];
+            const tokens: string[] = Object.keys(accounts_list).map(k => accounts_list[k]).filter(Boolean);
 
-            for (let i = 0; i < keys.length; i++) {
-                const key = keys[i];
-                const value = accounts_list[key];
-                tokenz.push(value);
-            }
+            // Deriv config-aware endpoint
+            const APP_ID = String(getAppId?.() ?? localStorage.getItem('APP_ID') ?? '29934');
+            const server = getSocketURL?.() || 'ws.derivws.com';
+            const ws_url = `wss://${server}/websockets/v3?app_id=${APP_ID}`;
 
-            const ws1 = new WebSocket(`wss://ws.binaryws.com/websockets/v3?app_id=${APP_ID}`);
+            let ws: WebSocket | null = null;
+            let reconnectAttempts = 0;
+            let pingTimer: number | null = null;
 
-            ws1.addEventListener("open", () => {
-                authorize();
-            });
+            const setLoginId = (loginid: string | null) => {
+                const loginIdEl = document.getElementById('login-id');
+                if (loginIdEl) loginIdEl.textContent = loginid ? String(loginid) : '---';
+            };
 
-            ws1.addEventListener("close", () => {
-                // Connection closed
-            });
+            const setBalance = (text: string) => {
+                const balIdEl = document.getElementById('bal-id');
+                if (balIdEl) balIdEl.textContent = text;
+            };
 
-            ws1.addEventListener("error", () => {
-                // Connection error
-            });
+            const startPing = () => {
+                stopPing();
+                // @ts-ignore
+                pingTimer = window.setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ ping: 1 }));
+                    }
+                }, 30000);
+            };
+            const stopPing = () => {
+                if (pingTimer) {
+                    clearInterval(pingTimer);
+                    pingTimer = null;
+                }
+            };
 
-            ws1.addEventListener('message', (data) => {
-                const ms = JSON.parse(data.data);
-                const req = ms.echo_req;
-                const req_id = req?.req_id;
-                const error = ms.error;
+            const connect = () => {
+                ws = new WebSocket(ws_url);
 
-                if (error) {
-                    console.log(ms);
-                } else {
-                    if (req_id === 2111) {
-                        const list = ms.authorize.account_list;
-                        for (let i = 0; i < list.length; i++) {
-                            const currency_type = list[i].currency_type;
-                            const is_virtual = list[i].is_virtual;
-                            if (currency_type === 'fiat' && is_virtual === 0) {
-                                const loginid = list[i].loginid;
-                                const loginIdEl = document.getElementById('login-id');
-                                if (loginIdEl) {
-                                    loginIdEl.textContent = loginid;
-                                }
-                                getBalance(loginid);
+                ws.addEventListener('open', () => {
+                    reconnectAttempts = 0;
+                    startPing();
+                    authorize();
+                });
+
+                ws.addEventListener('close', () => {
+                    stopPing();
+                    scheduleReconnect();
+                });
+
+                ws.addEventListener('error', () => {
+                    stopPing();
+                    scheduleReconnect();
+                });
+
+                ws.addEventListener('message', evt => {
+                    const ms = JSON.parse(evt.data);
+                    const req_id = ms?.echo_req?.req_id;
+                    const error = ms?.error;
+
+                    if (error) {
+                        console.warn('CopyTrading WS error:', error);
+                        return;
+                    }
+                    if (req_id === 2111 && ms.authorize?.account_list) {
+                        const list = ms.authorize.account_list as Array<any>;
+                        let realLogin: string | null = null;
+                        for (const acc of list) {
+                            if ((acc.currency_type === 'fiat' || String(acc.loginid).startsWith('CR')) && acc.is_virtual === 0) {
+                                realLogin = acc.loginid;
                                 break;
                             }
                         }
+                        if (realLogin) {
+                            localStorage.setItem('cr_loginid', String(realLogin));
+                        }
+                        const active_loginid = localStorage.getItem('active_loginid') || '';
+                        setLoginId(realLogin ? (active_loginid?.startsWith('VR') ? `CR: ${realLogin}` : String(realLogin)) : null);
+                        if (realLogin) getBalance(realLogin);
                     }
-
-                    if (req_id === 2112) {
+                    if (req_id === 2112 && ms.balance) {
                         const balance = ms.balance.balance;
                         const currency = ms.balance.currency;
-                        const balIdEl = document.getElementById('bal-id');
-                        if (balIdEl) {
-                            balIdEl.textContent = `${balance} ${currency}`;
-                        }
+                        setBalance(`${balance} ${currency}`);
                     }
-                }
-            });
+                });
+            };
+
+            const scheduleReconnect = () => {
+                const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempts++));
+                setTimeout(() => connect(), delay);
+            };
 
             const authorize = () => {
-                const msg = JSON.stringify({
-                    authorize: 'MULTI',
-                    tokens: tokenz,
-                    req_id: 2111
-                });
-                if (ws1.readyState !== WebSocket.CLOSED) {
-                    ws1.send(msg);
-                }
+                if (!ws || ws.readyState === WebSocket.CLOSED) return;
+                const msg = JSON.stringify({ authorize: 'MULTI', tokens, req_id: 2111 });
+                ws.send(msg);
             };
 
             const getBalance = (loginid: string) => {
-                const msg = JSON.stringify({
-                    balance: 1,
-                    loginid: loginid,
-                    req_id: 2112
-                });
-                if (ws1.readyState !== WebSocket.CLOSED) {
-                    ws1.send(msg);
-                }
+                if (!ws || ws.readyState === WebSocket.CLOSED) return;
+                const msg = JSON.stringify({ balance: 1, loginid, req_id: 2112 });
+                ws.send(msg);
             };
+
+            connect();
         };
 
         // Initialize everything
@@ -273,10 +310,6 @@ const CopyTrading = observer(() => {
         <div className='copy-trading' ref={htmlContentRef} style={{width: '100%', height: '100vh', minHeight: '100vh'}}>
             <div className="top-bar">
                 <button id="copy-trading-btn" className="btn btn-green">Start Demo to Real Copy Trading</button>
-                <div className="youtube-icon">
-                    <img src="https://img.icons8.com/ios-filled/50/fa314a/youtube-play.png" alt="Tutorial" />
-                    <div>Tutorial</div>
-                </div>
             </div>
 
             <div className="replicator-token mb-3">
@@ -297,7 +330,6 @@ const CopyTrading = observer(() => {
                 <div className="d-flex gap-2">
                     <button id="btn-add" className="btn btn-cyan">Add</button>
                     <button id="btn-refresh" className="btn btn-cyan">Sync &#x21bb;</button>
-                    <img src="https://img.icons8.com/ios-filled/24/fa314a/youtube-play.png" alt="yt" style={{filter: 'drop-shadow(0 0 4px rgba(255,0,0,0.6))'}} />
                 </div>
                 <p id="status-msg2" className="status-msg">Demo to real set successfully</p>
             </div>
