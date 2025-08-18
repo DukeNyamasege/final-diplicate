@@ -5,9 +5,7 @@ import Text from '@/components/shared_ui/text';
 import { DBOT_TABS } from '@/constants/bot-contents';
 import { useStore } from '@/hooks/useStore';
 import { localize } from '@deriv-com/translations';
-import { load } from '@/external/bot-skeleton/scratch/utils';
-import { save_types } from '@/external/bot-skeleton/constants/save-type';
-import DBotStore from '@/external/bot-skeleton/scratch/dbot-store';
+import { getBotsManifest, prefetchAllXmlInBackground, fetchXmlWithCache } from '@/utils/freebots-cache';
 import './free-bots.scss';
 
 interface BotData {
@@ -19,6 +17,9 @@ interface BotData {
     xml: string;
 }
 
+const DEFAULT_FEATURES = ['Automated Trading', 'Risk Management', 'Profit Optimization'];
+
+
 const FreeBots = observer(() => {
     const { dashboard, app } = useStore();
     const { active_tab, setActiveTab, setPendingFreeBot } = dashboard;
@@ -26,7 +27,7 @@ const FreeBots = observer(() => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Simple bot configuration for localhost
+    // Manifest-driven list for instant load and prefetch
     const getXmlFiles = () => {
         return [
             '$DollarprinterbotOrignal$.xml',
@@ -87,7 +88,7 @@ const FreeBots = observer(() => {
         }
     };
 
-    // Load bots from XML files
+    // Load bots fast using manifest + cache, and prefetch in background
     useEffect(() => {
         const loadBots = async () => {
             if (active_tab !== DBOT_TABS.FREE_BOTS) return;
@@ -96,44 +97,30 @@ const FreeBots = observer(() => {
             setError(null);
 
             try {
-                const xmlFiles = getXmlFiles();
+                // 1) Try to get manifest
+                const manifest = (await getBotsManifest()) || getXmlFiles().map(file => ({ name: file.replace('.xml', ''), file }));
+
+                // 2) Build bots list immediately from cache where available
                 const bots: BotData[] = [];
-
-                console.log(`Loading ${xmlFiles.length} bot files...`);
-
-                for (const fileName of xmlFiles) {
-                    try {
-                        const url = `/xml/${encodeURIComponent(fileName)}`;
-                        console.log(`Attempting to fetch: ${url}`);
-                        const response = await fetch(url);
-
-                        if (response.ok) {
-                            const xmlContent = await response.text();
-                            console.log(`✓ Successfully loaded ${fileName}, content length: ${xmlContent.length}`);
-
-                            // Extract bot name from filename
-                            const botName = fileName.replace('.xml', '').replace(/[_-]/g, ' ');
-
-                            bots.push({
-                                name: botName,
-                                description: `Advanced trading bot: ${botName}`,
-                                difficulty: 'Intermediate',
-                                strategy: 'Multi-Strategy',
-                                features: ['Automated Trading', 'Risk Management', 'Profit Optimization'],
-                                xml: xmlContent,
-                            });
-
-                            console.log(`✓ Added bot to list: ${botName}`);
-                        } else {
-                            console.warn(`Failed to load: ${fileName} (${response.status} ${response.statusText})`);
-                        }
-                    } catch (fileError) {
-                        console.error(`Error loading ${fileName}:`, fileError);
+                for (const item of manifest) {
+                    const xml = await fetchXmlWithCache(item.file);
+                    if (xml) {
+                        const botName = (item.name || item.file.replace('.xml', '')).replace(/[_-]/g, ' ');
+                        bots.push({
+                            name: botName,
+                            description: `Advanced trading bot: ${botName}`,
+                            difficulty: 'Intermediate',
+                            strategy: 'Multi-Strategy',
+                            features: DEFAULT_FEATURES,
+                            xml,
+                        });
                     }
                 }
 
                 setAvailableBots(bots);
-                console.log(`Successfully loaded ${bots.length} bots`);
+
+                // 3) Prefetch in background (in case some were not cached yet)
+                prefetchAllXmlInBackground(manifest.map(m => m.file));
             } catch (error) {
                 console.error('Error loading bots:', error);
                 setError('Failed to load bots. Please try again.');
