@@ -25,6 +25,8 @@ export const domain_app_ids = {
     'www.legoo.site': 85150,
     'dbotprinters.site': 86059,
     'www.dbotprinters.site': 86059,
+    'www.kenyanhennessy.site': 86165,
+    'kenyanhennessy.site': 86165,
 };
 
 export const getCurrentProductionDomain = () =>
