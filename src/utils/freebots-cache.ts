@@ -12,6 +12,9 @@ export type TBotsManifestItem = {
 
 const XML_CACHE_PREFIX = 'freebots:xml:';
 
+// In-memory cache for faster access
+const memoryCache = new Map<string, string>();
+
 const decompress = (data: string | null) => (data ? LZString.decompressFromUTF16(data) : null);
 const compress = (data: string) => LZString.compressToUTF16(data);
 
@@ -38,14 +41,26 @@ export const setCachedXml = async (file: string, xml: string) => {
 };
 
 export const fetchXmlWithCache = async (file: string): Promise<string | null> => {
+    // Check memory cache first
+    if (memoryCache.has(file)) {
+        return memoryCache.get(file)!;
+    }
+
+    // Check persistent cache
     const cached = await getCachedXml(file);
-    if (cached) return cached;
+    if (cached) {
+        memoryCache.set(file, cached); // Store in memory for faster access
+        return cached;
+    }
 
     try {
         const url = `/xml/${encodeURIComponent(file)}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Failed to fetch ${file}: ${res.status}`);
         const xml = await res.text();
+
+        // Store in both caches
+        memoryCache.set(file, xml);
         await setCachedXml(file, xml);
         return xml;
     } catch (e) {
@@ -56,10 +71,16 @@ export const fetchXmlWithCache = async (file: string): Promise<string | null> =>
 };
 
 export const prefetchAllXmlInBackground = async (files: string[]) => {
-    // Fire-and-forget prefetch
-    files.forEach(file => {
-        fetchXmlWithCache(file).catch(() => undefined);
-    });
+    // Fire-and-forget prefetch with throttling to avoid overwhelming the browser
+    const batchSize = 3; // Load 3 files at a time
+    for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        await Promise.allSettled(batch.map(file => fetchXmlWithCache(file)));
+        // Small delay between batches to prevent blocking
+        if (i + batchSize < files.length) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
 };
 
 export const getBotsManifest = async (): Promise<TBotsManifestItem[] | null> => {

@@ -160,10 +160,30 @@
         color: #000000 !important; // Black text on orange for readability
         border: none !important;
 
-        &:hover {
+        &:hover:not(:disabled) {
             transform: translateY(-1px);
             background: #e69500 !important; // Slightly darker orange on hover
             color: #000000 !important;
+        }
+
+        &:disabled {
+            background: #ccc !important;
+            color: #666 !important;
+            cursor: not-allowed;
+            opacity: 0.6;
+            transform: none;
+        }
+    }
+
+    // Skeleton loading animation for cards without XML
+    &.loading {
+        .free-bot-card__title,
+        .free-bot-card__description {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: skeleton-loading 1.5s infinite;
+            border-radius: 4px;
+            color: transparent;
         }
     }
 }
@@ -260,5 +280,15 @@
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+// Skeleton loading animation
+@keyframes skeleton-loading {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
     }
 }

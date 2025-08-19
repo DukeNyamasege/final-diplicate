@@ -88,43 +88,60 @@ const FreeBots = observer(() => {
         }
     };
 
-    // Load bots fast using manifest + cache, and prefetch in background
+    // Load bots with instant UI and progressive loading
     useEffect(() => {
         const loadBots = async () => {
             if (active_tab !== DBOT_TABS.FREE_BOTS) return;
 
-            setIsLoading(true);
             setError(null);
 
             try {
-                // 1) Try to get manifest
+                // 1) Get manifest immediately
                 const manifest = (await getBotsManifest()) || getXmlFiles().map(file => ({ name: file.replace('.xml', ''), file }));
 
-                // 2) Build bots list immediately from cache where available
-                const bots: BotData[] = [];
-                for (const item of manifest) {
-                    const xml = await fetchXmlWithCache(item.file);
-                    if (xml) {
-                        const botName = (item.name || item.file.replace('.xml', '')).replace(/[_-]/g, ' ');
-                        bots.push({
-                            name: botName,
-                            description: `Advanced trading bot: ${botName}`,
-                            difficulty: 'Intermediate',
-                            strategy: 'Multi-Strategy',
-                            features: DEFAULT_FEATURES,
-                            xml,
-                        });
+                // 2) Show skeleton cards immediately
+                const skeletonBots: BotData[] = manifest.map(item => ({
+                    name: (item.name || item.file.replace('.xml', '')).replace(/[_-]/g, ' '),
+                    description: `Advanced trading bot: ${(item.name || item.file.replace('.xml', '')).replace(/[_-]/g, ' ')}`,
+                    difficulty: 'Intermediate',
+                    strategy: 'Multi-Strategy',
+                    features: DEFAULT_FEATURES,
+                    xml: '', // Empty initially
+                }));
+
+                setAvailableBots(skeletonBots);
+                setIsLoading(false); // Show UI immediately
+
+                // 3) Load XMLs progressively in background
+                const loadedBots: BotData[] = [];
+                for (let i = 0; i < manifest.length; i++) {
+                    const item = manifest[i];
+                    try {
+                        const xml = await fetchXmlWithCache(item.file);
+                        if (xml) {
+                            const botName = (item.name || item.file.replace('.xml', '')).replace(/[_-]/g, ' ');
+                            loadedBots.push({
+                                name: botName,
+                                description: `Advanced trading bot: ${botName}`,
+                                difficulty: 'Intermediate',
+                                strategy: 'Multi-Strategy',
+                                features: DEFAULT_FEATURES,
+                                xml,
+                            });
+
+                            // Update UI progressively as each bot loads
+                            setAvailableBots([...loadedBots, ...skeletonBots.slice(loadedBots.length)]);
+                        }
+                    } catch (err) {
+                        console.warn(`Failed to load ${item.file}:`, err);
                     }
                 }
 
-                setAvailableBots(bots);
-
-                // 3) Prefetch in background (in case some were not cached yet)
-                prefetchAllXmlInBackground(manifest.map(m => m.file));
+                // 4) Final update with all loaded bots
+                setAvailableBots(loadedBots);
             } catch (error) {
                 console.error('Error loading bots:', error);
                 setError('Failed to load bots. Please try again.');
-            } finally {
                 setIsLoading(false);
             }
         };
@@ -192,8 +209,9 @@ const FreeBots = observer(() => {
                                     primary
                                     has_effect
                                     type='button'
+                                    disabled={!bot.xml} // Disable if XML not loaded yet
                                 >
-                                    {localize('Load Bot')}
+                                    {bot.xml ? localize('Load Bot') : localize('Loading...')}
                                 </Button>
                             </div>
                         ))}
