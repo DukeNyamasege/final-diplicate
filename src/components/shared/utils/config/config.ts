@@ -27,6 +27,9 @@ export const domain_app_ids = {
     'www.dbotprinters.site': 86059,
     'www.kenyanhennessy.site': 86165,
     'kenyanhennessy.site': 86165,
+    'masterhunter.site': 96223,
+    'www.masterhunter.site': 96223,
+
 };
 
 export const getCurrentProductionDomain = () =>

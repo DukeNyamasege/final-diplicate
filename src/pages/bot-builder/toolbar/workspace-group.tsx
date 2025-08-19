@@ -17,16 +17,7 @@ import { useDevice } from '@deriv-com/ui';
 import { rudderStackSendOpenEvent } from '../../../analytics/rudderstack-common-events';
 import ToolbarIcon from './toolbar-icon';
 
-// Custom Refresh Icon - using your uploaded image
-const CustomRefreshIcon = () => (
-    <img
-        src="/refresh batton.png"
-        alt="Refresh"
-        width="24"
-        height="24"
-        style={{ objectFit: 'contain' }}
-    />
-);
+// Removed custom refresh icon component
 
 const WorkspaceGroup = observer(() => {
     const { dashboard, toolbar, load_modal, save_modal } = useStore();
@@ -48,7 +39,7 @@ const WorkspaceGroup = observer(() => {
                             onClick={onResetClick}
                             data-testid='dt_toolbar_reset_button'
                         >
-                            <CustomRefreshIcon />
+                            {/* Removed custom refresh icon */}
                         </span>
                     }
                 />

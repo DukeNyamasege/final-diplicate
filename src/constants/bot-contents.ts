@@ -27,7 +27,6 @@ export const TAB_IDS = [
     'id-dbot-dashboard',
     'id-bot-builder',
     'id-charts',
-    'id-tutorials',
     'id-free-bots',
     'id-copy-trading',
     'id-dtrader',
