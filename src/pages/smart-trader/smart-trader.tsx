@@ -148,9 +148,10 @@ const SmartTrader = observer(() => {
         setLastDigit(null);
         setTicksProcessed(0);
         try {
-            const { tick_stream, error } = await apiRef.current.subscribe({ ticks: sym, subscribe: 1 });
+            const { subscription, error } = await apiRef.current.send({ ticks: sym, subscribe: 1 });
             if (error) throw error;
-            // Fallback handling: Deriv API returns { tick } messages on 'message' event
+            if (subscription?.id) tickStreamIdRef.current = subscription.id;
+            // Listen for streaming ticks on the raw websocket
             const onMsg = (evt: MessageEvent) => {
                 try {
                     const data = JSON.parse(evt.data as any);
@@ -211,32 +212,68 @@ const SmartTrader = observer(() => {
         try {
             while (!stopFlagRef.current) {
                 const buy = await purchaseOnce();
+
+                // Seed an initial transaction row immediately so the UI shows a live row like Bot Builder
+                try {
+                    const symbol_display = symbols.find(s => s.symbol === symbol)?.display_name || symbol;
+                    transactions.onBotContractEvent({
+                        contract_id: buy?.contract_id,
+                        transaction_ids: { buy: buy?.transaction_id },
+                        buy_price: buy?.buy_price,
+                        currency: account_currency,
+                        contract_type: tradeType as any,
+                        underlying: symbol,
+                        display_name: symbol_display,
+                        date_start: Math.floor(Date.now() / 1000),
+                        status: 'open',
+                    } as any);
+                } catch {}
+
+                // Reflect stage immediately after successful buy
+                run_panel.setHasOpenContract(true);
+                run_panel.setContractStage(contract_stages.PURCHASE_SENT);
+
                 // subscribe to contract updates for this purchase and push to transactions
                 try {
-                    const { proposal_open_contract, error } = await apiRef.current.subscribe(
-                        { proposal_open_contract: 1, contract_id: buy?.contract_id, subscribe: 1 }
-                    );
+                    const res = await apiRef.current.send({
+                        proposal_open_contract: 1,
+                        contract_id: buy?.contract_id,
+                        subscribe: 1,
+                    });
+                    const { error, proposal_open_contract: pocInit, subscription } = res || {};
                     if (error) throw error;
-                    // Push initial snapshot if present
-                    if (proposal_open_contract) {
-                        transactions.onBotContractEvent(proposal_open_contract);
+
+                    let pocSubId: string | null = subscription?.id || null;
+                    const targetId = String(buy?.contract_id || '');
+
+                    // Push initial snapshot if present in the first response
+                    if (pocInit && String(pocInit?.contract_id || '') === targetId) {
+                        transactions.onBotContractEvent(pocInit);
                         run_panel.setHasOpenContract(true);
-                        run_panel.setContractStage(contract_stages.PURCHASE_SENT);
                     }
+
+                    // Listen for subsequent streaming updates
                     const onMsg = (evt: MessageEvent) => {
                         try {
                             const data = JSON.parse(evt.data as any);
-                            if (data?.msg_type === 'proposal_open_contract' && data?.proposal_open_contract?.contract_id === buy?.contract_id) {
-                                transactions.onBotContractEvent(data.proposal_open_contract);
-                                run_panel.setHasOpenContract(true);
-                                if (data.proposal_open_contract.is_sold || data.proposal_open_contract.status === 'sold') {
-                                    run_panel.setContractStage(contract_stages.CONTRACT_CLOSED);
-                                    run_panel.setHasOpenContract(false);
-                                    apiRef.current?.forget?.({ forget: proposal_open_contract?.id });
-                                    apiRef.current?.connection?.removeEventListener('message', onMsg);
+                            if (data?.msg_type === 'proposal_open_contract') {
+                                const poc = data.proposal_open_contract;
+                                // capture subscription id for later forget
+                                if (!pocSubId && data?.subscription?.id) pocSubId = data.subscription.id;
+                                if (String(poc?.contract_id || '') === targetId) {
+                                    transactions.onBotContractEvent(poc);
+                                    run_panel.setHasOpenContract(true);
+                                    if (poc?.is_sold || poc?.status === 'sold') {
+                                        run_panel.setContractStage(contract_stages.CONTRACT_CLOSED);
+                                        run_panel.setHasOpenContract(false);
+                                        if (pocSubId) apiRef.current?.forget?.({ forget: pocSubId });
+                                        apiRef.current?.connection?.removeEventListener('message', onMsg);
+                                    }
                                 }
                             }
-                        } catch {}
+                        } catch {
+                            // noop
+                        }
                     };
                     apiRef.current?.connection?.addEventListener('message', onMsg);
                 } catch (subErr) {
