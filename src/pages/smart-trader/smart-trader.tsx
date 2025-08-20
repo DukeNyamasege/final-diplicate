@@ -4,6 +4,7 @@ import Text from '@/components/shared_ui/text';
 import { localize } from '@deriv-com/translations';
 import { generateDerivApiInstance, V2GetActiveClientId, V2GetActiveToken } from '@/external/bot-skeleton/services/api/appId';
 import { tradeOptionToBuy } from '@/external/bot-skeleton/services/tradeEngine/utils/helpers';
+import { contract_stages } from '@/constants/contract-stage';
 import { useStore } from '@/hooks/useStore';
 import './smart-trader.scss';
 
@@ -204,6 +205,8 @@ const SmartTrader = observer(() => {
         run_panel.toggleDrawer(true);
         run_panel.setActiveTabIndex(1); // Transactions tab index in run panel tabs
         run_panel.run_id = `smart-${Date.now()}`;
+        run_panel.setIsRunning(true);
+        run_panel.setContractStage(contract_stages.STARTING);
 
         try {
             while (!stopFlagRef.current) {
@@ -214,12 +217,21 @@ const SmartTrader = observer(() => {
                         { proposal_open_contract: 1, contract_id: buy?.contract_id, subscribe: 1 }
                     );
                     if (error) throw error;
+                    // Push initial snapshot if present
+                    if (proposal_open_contract) {
+                        transactions.onBotContractEvent(proposal_open_contract);
+                        run_panel.setHasOpenContract(true);
+                        run_panel.setContractStage(contract_stages.PURCHASE_SENT);
+                    }
                     const onMsg = (evt: MessageEvent) => {
                         try {
                             const data = JSON.parse(evt.data as any);
                             if (data?.msg_type === 'proposal_open_contract' && data?.proposal_open_contract?.contract_id === buy?.contract_id) {
                                 transactions.onBotContractEvent(data.proposal_open_contract);
+                                run_panel.setHasOpenContract(true);
                                 if (data.proposal_open_contract.is_sold || data.proposal_open_contract.status === 'sold') {
+                                    run_panel.setContractStage(contract_stages.CONTRACT_CLOSED);
+                                    run_panel.setHasOpenContract(false);
                                     apiRef.current?.forget?.({ forget: proposal_open_contract?.id });
                                     apiRef.current?.connection?.removeEventListener('message', onMsg);
                                 }
@@ -243,6 +255,9 @@ const SmartTrader = observer(() => {
             setStatus(`Error: ${msg}`);
         } finally {
             setIsRunning(false);
+            run_panel.setIsRunning(false);
+            run_panel.setHasOpenContract(false);
+            run_panel.setContractStage(contract_stages.NOT_RUNNING);
         }
     };
 
