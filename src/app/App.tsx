@@ -6,6 +6,7 @@ import AppLoaderWrapper from '@/components/app-loader/app-loader-wrapper';
 import { getLoaderDuration, isLoaderEnabled } from '@/components/app-loader/loader-config';
 import ChunkLoader from '@/components/loader/chunk-loader';
 import RoutePromptDialog from '@/components/route-prompt-dialog';
+import { getBotsManifest, prefetchAllXmlInBackground } from '@/utils/freebots-cache';
 import { crypto_currencies_display_order, fiat_currencies_display_order } from '@/components/shared';
 import { StoreProvider } from '@/hooks/useStore';
 import CallbackPage from '@/pages/callback';
@@ -77,6 +78,23 @@ function App() {
 
         initSurvicate();
         window?.dataLayer?.push({ event: 'page_load' });
+
+        // Prefetch Free Bots XMLs on startup for instant availability
+        // Skip prefetch on very slow connections (2G)
+        const shouldPrefetch = !(navigator as any)?.connection || (navigator as any).connection?.effectiveType !== '2g';
+        if (shouldPrefetch) {
+            setTimeout(async () => {
+                try {
+                    const manifest = (await getBotsManifest()) || [];
+                    if (manifest.length) {
+                        prefetchAllXmlInBackground(manifest.map(m => m.file));
+                    }
+                } catch (e) {
+                    console.warn('Prefetch Free Bots failed', e);
+                }
+            }, 0);
+        }
+
         return () => {
             // Clean up the invalid token handler when the component unmounts
             const survicate_box = document.getElementById('survicate-box');

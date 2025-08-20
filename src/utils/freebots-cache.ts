@@ -15,6 +15,13 @@ const XML_CACHE_PREFIX = 'freebots:xml:';
 // In-memory cache for faster access
 const memoryCache = new Map<string, string>();
 
+// Domain-aware XML base path: defaults to /xml/, but can switch to /xml/<domain>/ after manifest resolution
+let XML_BASE = '/xml/';
+export const getXmlBase = () => XML_BASE;
+const setXmlBase = (base: string) => {
+    XML_BASE = base.endsWith('/') ? base : `${base}/`;
+};
+
 const decompress = (data: string | null) => (data ? LZString.decompressFromUTF16(data) : null);
 const compress = (data: string) => LZString.compressToUTF16(data);
 
@@ -54,8 +61,16 @@ export const fetchXmlWithCache = async (file: string): Promise<string | null> =>
     }
 
     try {
-        const url = `/xml/${encodeURIComponent(file)}`;
-        const res = await fetch(url);
+        // 1) Try domain-specific base (set after manifest) else default /xml/
+        const primaryUrl = `${getXmlBase()}${encodeURIComponent(file)}`;
+        let res = await fetch(primaryUrl);
+
+        // 2) Fallback: try default /xml/ if domain-specific path 404s
+        if (!res.ok) {
+            const fallbackUrl = `/xml/${encodeURIComponent(file)}`;
+            res = await fetch(fallbackUrl);
+        }
+
         if (!res.ok) throw new Error(`Failed to fetch ${file}: ${res.status}`);
         const xml = await res.text();
 
@@ -85,9 +100,28 @@ export const prefetchAllXmlInBackground = async (files: string[]) => {
 
 export const getBotsManifest = async (): Promise<TBotsManifestItem[] | null> => {
     try {
-        const res = await fetch('/xml/bots.json', { cache: 'force-cache' });
+        const hostname = window.location.hostname.toLowerCase();
+        const urlParams = new URLSearchParams(window.location.search);
+        const override = (urlParams.get('bots_domain') || '').toLowerCase().replace(/^www\./, '');
+        const domain = (override || hostname).replace(/^www\./, '');
+
+        // Try domain-specific manifest first
+        let res = await fetch(`/xml/${encodeURIComponent(domain)}/bots.json`, { cache: 'force-cache' });
+        if (!res.ok) {
+            // Fallback to generic manifest
+            res = await fetch('/xml/bots.json', { cache: 'force-cache' });
+        }
         if (!res.ok) return null;
+
         const data = (await res.json()) as TBotsManifestItem[];
+
+        // If we loaded a domain-specific file, set base for XML fetches
+        if (res.url.includes(`/${domain}/bots.json`)) {
+            setXmlBase(`/xml/${domain}/`);
+        } else {
+            setXmlBase('/xml/');
+        }
+
         return data;
     } catch (e) {
         // eslint-disable-next-line no-console

@@ -25,10 +25,14 @@ export const domain_app_ids = {
     'www.legoo.site': 85150,
     'dbotprinters.site': 86059,
     'www.dbotprinters.site': 86059,
-    'www.kenyanhennessy.site': 86165,
-    'kenyanhennessy.site': 86165,
+    'www.kenyanhennessy.site': 97088,
+    'kenyanhennessy.site': 97088,
     'masterhunter.site': 96223,
-    'www.masterhunter.site': 96223,
+    'developmentviewport.netlify.app/': 97311,
+    'www.developmentviewport.netlify.app/': 97311,
+
+    
+
 
 };
 

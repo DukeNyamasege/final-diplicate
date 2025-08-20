@@ -15,10 +15,11 @@ export const DBOT_TABS: TDashboardTabIndex = Object.freeze({
     DASHBOARD: 0,
     BOT_BUILDER: 1,
     CHART: 2,
-    TUTORIAL: 3,
-    FREE_BOTS: 4,
-    COPY_TRADING: 5,
-    DTRADER: 6,
+    FREE_BOTS: 3,
+    COPY_TRADING: 4,
+    DTRADER: 5,
+    // Keep TUTORIAL as a non-active sentinel to avoid index mismatches in legacy checks
+    TUTORIAL: 999,
 });
 
 export const MAX_STRATEGIES = 10;

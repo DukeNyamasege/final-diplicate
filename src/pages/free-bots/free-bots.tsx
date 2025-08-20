@@ -88,29 +88,52 @@ const FreeBots = observer(() => {
         }
     };
 
-    // Load bots with instant UI and progressive loading
+    // Load bots with instant UI and progressive loading (no blocking spinner)
     useEffect(() => {
         const loadBots = async () => {
             if (active_tab !== DBOT_TABS.FREE_BOTS) return;
 
             setError(null);
 
-            try {
-                // 1) Get manifest immediately
-                const manifest = (await getBotsManifest()) || getXmlFiles().map(file => ({ name: file.replace('.xml', ''), file }));
+            // 0) Immediately render skeleton cards from a small fallback list
+            const fallback = getXmlFiles().map(file => ({ name: file.replace('.xml', ''), file }));
+            const initialSkeleton: BotData[] = fallback.map(item => ({
+                name: (item.name || item.file.replace('.xml', '')).replace(/[_-]/g, ' '),
+                description: `Advanced trading bot: ${(item.name || item.file.replace('.xml', '')).replace(/[_-]/g, ' ')}`,
+                difficulty: 'Intermediate',
+                strategy: 'Multi-Strategy',
+                features: DEFAULT_FEATURES,
+                xml: '',
+            }));
+            setAvailableBots(initialSkeleton);
+            setIsLoading(false); // hide "Loading free bots..." right away
 
-                // 2) Show skeleton cards immediately
+            try {
+                // 1) Fetch manifest with timeout; fallback to initial list if slow
+                const withTimeout = <T,>(p: Promise<T>, ms = 800): Promise<T | null> =>
+                    new Promise(resolve => {
+                        const t = setTimeout(() => resolve(null), ms);
+                        p.then(r => {
+                            clearTimeout(t);
+                            resolve(r);
+                        }).catch(() => {
+                            clearTimeout(t);
+                            resolve(null);
+                        });
+                    });
+
+                const manifest = (await withTimeout(getBotsManifest(), 800)) || fallback;
+
+                // 2) If manifest differs, update skeletons to match
                 const skeletonBots: BotData[] = manifest.map(item => ({
                     name: (item.name || item.file.replace('.xml', '')).replace(/[_-]/g, ' '),
                     description: `Advanced trading bot: ${(item.name || item.file.replace('.xml', '')).replace(/[_-]/g, ' ')}`,
                     difficulty: 'Intermediate',
                     strategy: 'Multi-Strategy',
                     features: DEFAULT_FEATURES,
-                    xml: '', // Empty initially
+                    xml: '',
                 }));
-
                 setAvailableBots(skeletonBots);
-                setIsLoading(false); // Show UI immediately
 
                 // 3) Load XMLs progressively in background
                 const loadedBots: BotData[] = [];
@@ -128,25 +151,20 @@ const FreeBots = observer(() => {
                                 features: DEFAULT_FEATURES,
                                 xml,
                             });
-
-                            // Update UI progressively as each bot loads
                             setAvailableBots([...loadedBots, ...skeletonBots.slice(loadedBots.length)]);
                         }
                     } catch (err) {
                         console.warn(`Failed to load ${item.file}:`, err);
                     }
                 }
-
-                // 4) Final update with all loaded bots
-                setAvailableBots(loadedBots);
             } catch (error) {
                 console.error('Error loading bots:', error);
                 setError('Failed to load bots. Please try again.');
-                setIsLoading(false);
             }
         };
 
         loadBots();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [active_tab]);
 
     return (

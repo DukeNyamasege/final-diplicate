@@ -20,7 +20,16 @@
                 font-size: 62.5%;
             }
         </style>
-    </head>
+      <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/service-worker.js').catch(function(err){
+            console.warn('SW registration failed', err);
+          });
+        });
+      }
+    </script>
+  </head>
 
     <body class="body theme theme--light">
         <div id="modal_root" class="modal-root"></div>
