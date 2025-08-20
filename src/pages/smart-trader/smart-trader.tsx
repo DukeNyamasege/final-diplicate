@@ -35,7 +35,14 @@ const SmartTrader = observer(() => {
     const [tradeType, setTradeType] = useState<string>('DIGITOVER');
     const [ticks, setTicks] = useState<number>(1);
     const [stake, setStake] = useState<number>(0.5);
-    const [prediction, setPrediction] = useState<number>(5);
+    // Predictions
+    const [prediction, setPrediction] = useState<number>(5); // unified displayed prediction
+    const [ouPredPreLoss, setOuPredPreLoss] = useState<number>(5);
+    const [ouPredPostLoss, setOuPredPostLoss] = useState<number>(5);
+    const [mdPrediction, setMdPrediction] = useState<number>(5); // for match/diff
+    // Martingale/recovery
+    const [martingaleMultiplier, setMartingaleMultiplier] = useState<number>(1.0);
+    const [maxMartingaleSteps, setMaxMartingaleSteps] = useState<number>(3);
 
     // Live digits state
     const [digits, setDigits] = useState<number[]>([]);
@@ -46,7 +53,7 @@ const SmartTrader = observer(() => {
     const [is_running, setIsRunning] = useState(false);
     const stopFlagRef = useRef<boolean>(false);
 
-    const needsPrediction = useMemo(() => tradeType === 'DIGITOVER' || tradeType === 'DIGITUNDER', [tradeType]);
+    const needsPrediction = useMemo(() => tradeType === 'DIGITOVER' || tradeType === 'DIGITUNDER' || tradeType === 'DIGITMATCH' || tradeType === 'DIGITDIFF', [tradeType]);
 
     const getHintClass = (d: number) => {
         if (tradeType === 'DIGITEVEN') return d % 2 === 0 ? 'is-green' : 'is-red';
@@ -190,7 +197,12 @@ const SmartTrader = observer(() => {
             duration_unit: 't',
             symbol,
         };
-        if (needsPrediction) trade_option.prediction = Number(prediction);
+        // Choose prediction based on trade type and last outcome
+        if (tradeType === 'DIGITOVER' || tradeType === 'DIGITUNDER') {
+            trade_option.prediction = Number(prediction);
+        } else if (tradeType === 'DIGITMATCH' || tradeType === 'DIGITDIFF') {
+            trade_option.prediction = Number(mdPrediction);
+        }
 
         const buy_req = tradeOptionToBuy(tradeType, trade_option);
         const { buy, error } = await apiRef.current.buy(buy_req);
@@ -210,7 +222,19 @@ const SmartTrader = observer(() => {
         run_panel.setContractStage(contract_stages.STARTING);
 
         try {
+            let lossStreak = 0;
+            let step = 0;
             while (!stopFlagRef.current) {
+                // Adjust stake and prediction based on prior outcomes (simple martingale)
+                const effectiveStake = step > 0 ? Number((stake * Math.pow(martingaleMultiplier, step)).toFixed(2)) : stake;
+                const isOU = tradeType === 'DIGITOVER' || tradeType === 'DIGITUNDER';
+                if (isOU) {
+                    const pred = lossStreak > 0 ? ouPredPostLoss : ouPredPreLoss;
+                    setPrediction(pred);
+                } else if (tradeType === 'DIGITMATCH' || tradeType === 'DIGITDIFF') {
+                    setPrediction(mdPrediction);
+                }
+
                 const buy = await purchaseOnce();
 
                 // Seed an initial transaction row immediately so the UI shows a live row like Bot Builder
@@ -266,6 +290,9 @@ const SmartTrader = observer(() => {
                                     if (poc?.is_sold || poc?.status === 'sold') {
                                         run_panel.setContractStage(contract_stages.CONTRACT_CLOSED);
                                         run_panel.setHasOpenContract(false);
+                                        // update simple martingale tracker
+                                        const profit = Number(poc?.profit || 0);
+                                        if (profit > 0) { lossStreak = 0; step = 0; } else { lossStreak++; step = Math.min(step + 1, maxMartingaleSteps); }
                                         if (pocSubId) apiRef.current?.forget?.({ forget: pocSubId });
                                         apiRef.current?.connection?.removeEventListener('message', onMsg);
                                     }
@@ -295,6 +322,45 @@ const SmartTrader = observer(() => {
             run_panel.setIsRunning(false);
             run_panel.setHasOpenContract(false);
             run_panel.setContractStage(contract_stages.NOT_RUNNING);
+                        {/* Prediction controls by trade type */}
+                        {tradeType === 'DIGITMATCH' || tradeType === 'DIGITDIFF' ? (
+                            <div className='smart-trader__row smart-trader__row--two'>
+                                <div className='smart-trader__field'>
+                                    <label htmlFor='st-md-pred'>{localize('Match/Diff prediction digit')}</label>
+                                    <input id='st-md-pred' type='number' min={0} max={9} value={mdPrediction}
+                                        onChange={e => { const v = Math.max(0, Math.min(9, Number(e.target.value))); setMdPrediction(v); setPrediction(v); }} />
+                                </div>
+                                <div className='smart-trader__field'>
+                                    <label htmlFor='st-martingale'>{localize('Martingale multiplier')}</label>
+                                    <input id='st-martingale' type='number' min={1} step='0.1' value={martingaleMultiplier}
+                                        onChange={e => setMartingaleMultiplier(Math.max(1, Number(e.target.value)))} />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className='smart-trader__row smart-trader__row--compact'>
+                                <div className='smart-trader__field'>
+                                    <label htmlFor='st-ou-pred-pre'>{localize('Over/Under prediction (pre-loss)')}</label>
+                                    <input id='st-ou-pred-pre' type='number' min={0} max={9} value={ouPredPreLoss}
+                                        onChange={e => { const v = Math.max(0, Math.min(9, Number(e.target.value))); setOuPredPreLoss(v); if (!is_running) setPrediction(v); }} />
+                                </div>
+                                <div className='smart-trader__field'>
+                                    <label htmlFor='st-ou-pred-post'>{localize('Over/Under prediction (after loss)')}</label>
+                                    <input id='st-ou-pred-post' type='number' min={0} max={9} value={ouPredPostLoss}
+                                        onChange={e => setOuPredPostLoss(Math.max(0, Math.min(9, Number(e.target.value))))} />
+                                </div>
+                                <div className='smart-trader__field'>
+                                    <label htmlFor='st-martingale'>{localize('Martingale multiplier')}</label>
+                                    <input id='st-martingale' type='number' min={1} step='0.1' value={martingaleMultiplier}
+                                        onChange={e => setMartingaleMultiplier(Math.max(1, Number(e.target.value)))} />
+                                </div>
+                                <div className='smart-trader__field'>
+                                    <label htmlFor='st-mart-steps'>{localize('Max martingale steps')}</label>
+                                    <input id='st-mart-steps' type='number' min={0} max={10} value={maxMartingaleSteps}
+                                        onChange={e => setMaxMartingaleSteps(Math.max(0, Math.min(10, Number(e.target.value))))} />
+                                </div>
+                            </div>
+                        )}
+
         }
     };
 
@@ -317,7 +383,7 @@ const SmartTrader = observer(() => {
 
                 <div className='smart-trader__content'>
                     <div className='smart-trader__card'>
-                        <div className='smart-trader__row'>
+                        <div className='smart-trader__row smart-trader__row--two'>
                             <div className='smart-trader__field'>
                                 <label htmlFor='st-symbol'>{localize('Volatility')}</label>
                                 <select
@@ -352,7 +418,7 @@ const SmartTrader = observer(() => {
                             </div>
                         </div>
 
-                        <div className='smart-trader__row'>
+                        <div className='smart-trader__row smart-trader__row--compact'>
                             <div className='smart-trader__field'>
                                 <label htmlFor='st-ticks'>{localize('Ticks')}</label>
                                 <input
