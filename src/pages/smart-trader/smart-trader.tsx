@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import Text from '@/components/shared_ui/text';
 import { localize } from '@deriv-com/translations';
-import { generateDerivApiInstance, V2GetActiveToken } from '@/external/bot-skeleton/services/api/appId';
+import { generateDerivApiInstance, V2GetActiveClientId, V2GetActiveToken } from '@/external/bot-skeleton/services/api/appId';
 import { tradeOptionToBuy } from '@/external/bot-skeleton/services/tradeEngine/utils/helpers';
 import { useStore } from '@/hooks/useStore';
 import './smart-trader.scss';
@@ -118,7 +118,14 @@ const SmartTrader = observer(() => {
             throw error;
         }
         setIsAuthorized(true);
+        const loginid = authorize?.loginid || V2GetActiveClientId();
         setAccountCurrency(authorize?.currency || 'USD');
+        try {
+            // Sync Smart Trader auth state into shared ClientStore so Transactions store keys correctly by account
+            store?.client?.setLoginId?.(loginid || '');
+            store?.client?.setCurrency?.(authorize?.currency || 'USD');
+            store?.client?.setIsLoggedIn?.(true);
+        } catch {}
     };
 
     const stopTicks = () => {
