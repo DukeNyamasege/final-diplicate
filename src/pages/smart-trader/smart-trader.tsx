@@ -4,6 +4,7 @@ import Text from '@/components/shared_ui/text';
 import { localize } from '@deriv-com/translations';
 import { generateDerivApiInstance, V2GetActiveToken } from '@/external/bot-skeleton/services/api/appId';
 import { tradeOptionToBuy } from '@/external/bot-skeleton/services/tradeEngine/utils/helpers';
+import { useStore } from '@/hooks/useStore';
 import './smart-trader.scss';
 
 // Minimal trade types we will support initially
@@ -17,6 +18,9 @@ const TRADE_TYPES = [
 ];
 
 const SmartTrader = observer(() => {
+    const store = useStore();
+    const { run_panel, transactions } = store;
+
     const apiRef = useRef<any>(null);
     const tickStreamIdRef = useRef<string | null>(null);
     const messageHandlerRef = useRef<((evt: MessageEvent) => void) | null>(null);
@@ -39,6 +43,7 @@ const SmartTrader = observer(() => {
 
     const [status, setStatus] = useState<string>('');
     const [is_running, setIsRunning] = useState(false);
+    const stopFlagRef = useRef<boolean>(false);
 
     const needsPrediction = useMemo(() => tradeType === 'DIGITOVER' || tradeType === 'DIGITUNDER', [tradeType]);
 
@@ -164,36 +169,79 @@ const SmartTrader = observer(() => {
         }
     };
 
+    const purchaseOnce = async () => {
+        await authorizeIfNeeded();
+
+        const trade_option: any = {
+            amount: Number(stake),
+            basis: 'stake',
+            contractTypes: [tradeType],
+            currency: account_currency,
+            duration: Number(ticks),
+            duration_unit: 't',
+            symbol,
+        };
+        if (needsPrediction) trade_option.prediction = Number(prediction);
+
+        const buy_req = tradeOptionToBuy(tradeType, trade_option);
+        const { buy, error } = await apiRef.current.buy(buy_req);
+        if (error) throw error;
+        setStatus(`Purchased: ${buy?.longcode || 'Contract'} (ID: ${buy?.contract_id})`);
+        return buy;
+    };
+
     const onRun = async () => {
         setStatus('');
         setIsRunning(true);
+        stopFlagRef.current = false;
+        run_panel.toggleDrawer(true);
+        run_panel.setActiveTabIndex(1); // Transactions tab index in run panel tabs
+        run_panel.run_id = `smart-${Date.now()}`;
+
         try {
-            await authorizeIfNeeded();
+            while (!stopFlagRef.current) {
+                const buy = await purchaseOnce();
+                // subscribe to contract updates for this purchase and push to transactions
+                try {
+                    const { proposal_open_contract, error } = await apiRef.current.subscribe(
+                        { proposal_open_contract: 1, contract_id: buy?.contract_id, subscribe: 1 }
+                    );
+                    if (error) throw error;
+                    const onMsg = (evt: MessageEvent) => {
+                        try {
+                            const data = JSON.parse(evt.data as any);
+                            if (data?.msg_type === 'proposal_open_contract' && data?.proposal_open_contract?.contract_id === buy?.contract_id) {
+                                transactions.onBotContractEvent(data.proposal_open_contract);
+                                if (data.proposal_open_contract.is_sold || data.proposal_open_contract.status === 'sold') {
+                                    apiRef.current?.forget?.({ forget: proposal_open_contract?.id });
+                                    apiRef.current?.connection?.removeEventListener('message', onMsg);
+                                }
+                            }
+                        } catch {}
+                    };
+                    apiRef.current?.connection?.addEventListener('message', onMsg);
+                } catch (subErr) {
+                    // eslint-disable-next-line no-console
+                    console.error('subscribe poc error', subErr);
+                }
 
-            const trade_option: any = {
-                amount: Number(stake),
-                basis: 'stake',
-                contractTypes: [tradeType],
-                currency: account_currency,
-                duration: Number(ticks),
-                duration_unit: 't',
-                symbol,
-            };
-            if (needsPrediction) trade_option.prediction = Number(prediction);
-
-            const buy_req = tradeOptionToBuy(tradeType, trade_option);
-            const { buy, error } = await apiRef.current.buy(buy_req);
-            if (error) throw error;
-
-            setStatus(`Purchased: ${buy?.longcode || 'Contract'} (ID: ${buy?.contract_id})`);
+                // Wait minimally between purchases: we’ll wait for ticks duration completion by polling poc completion
+                // Simple delay to prevent spamming if API rejects immediate buy loop
+                await new Promise(res => setTimeout(res, 500));
+            }
         } catch (e: any) {
             // eslint-disable-next-line no-console
-            console.error('SmartTrader run error', e);
+            console.error('SmartTrader run loop error', e);
             const msg = e?.message || e?.error?.message || 'Something went wrong';
             setStatus(`Error: ${msg}`);
         } finally {
             setIsRunning(false);
         }
+    };
+
+    const onStop = () => {
+        stopFlagRef.current = true;
+        setIsRunning(false);
     };
 
     return (
@@ -308,8 +356,13 @@ const SmartTrader = observer(() => {
                                 onClick={onRun}
                                 disabled={is_running || !symbol}
                             >
-                                {is_running ? localize('Processing...') : localize('Start Trading')}
+                                {is_running ? localize('Running...') : localize('Start Trading')}
                             </button>
+                            {is_running && (
+                                <button className='smart-trader__stop' onClick={onStop}>
+                                    {localize('Stop')}
+                                </button>
+                            )}
                         </div>
 
                         {status && (

@@ -76,6 +76,7 @@
     &__actions {
         display: flex;
         justify-content: flex-end;
+        gap: 0.8rem;
         margin-top: 0.8rem;
     }
 
@@ -93,6 +94,16 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+    }
+    &__stop {
+        background: #ef4444;
+        color: #fff;
+        border: none;
+        border-radius: 0.6rem;
+        padding: 0.8rem 1.2rem;
+        height: 40px;
+        font-weight: 600;
+        cursor: pointer;
     }
 
     &__digits {
