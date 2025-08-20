@@ -18,6 +18,9 @@ const TRADE_TYPES = [
 
 const SmartTrader = observer(() => {
     const apiRef = useRef<any>(null);
+    const tickStreamIdRef = useRef<string | null>(null);
+    const messageHandlerRef = useRef<((evt: MessageEvent) => void) | null>(null);
+
     const [is_authorized, setIsAuthorized] = useState(false);
     const [account_currency, setAccountCurrency] = useState<string>('USD');
     const [symbols, setSymbols] = useState<Array<{ symbol: string; display_name: string }>>([]);
@@ -29,10 +32,33 @@ const SmartTrader = observer(() => {
     const [stake, setStake] = useState<number>(0.5);
     const [prediction, setPrediction] = useState<number>(5);
 
+    // Live digits state
+    const [digits, setDigits] = useState<number[]>([]);
+    const [lastDigit, setLastDigit] = useState<number | null>(null);
+    const [ticksProcessed, setTicksProcessed] = useState<number>(0);
+
     const [status, setStatus] = useState<string>('');
     const [is_running, setIsRunning] = useState(false);
 
     const needsPrediction = useMemo(() => tradeType === 'DIGITOVER' || tradeType === 'DIGITUNDER', [tradeType]);
+
+    const getHintClass = (d: number) => {
+        if (tradeType === 'DIGITEVEN') return d % 2 === 0 ? 'is-green' : 'is-red';
+        if (tradeType === 'DIGITODD') return d % 2 !== 0 ? 'is-green' : 'is-red';
+        if ((tradeType === 'DIGITOVER' || tradeType === 'DIGITUNDER') && Number.isFinite(prediction)) {
+            if (tradeType === 'DIGITOVER') {
+                if (d > Number(prediction)) return 'is-green';
+                if (d < Number(prediction)) return 'is-red';
+                return 'is-neutral';
+            }
+            if (tradeType === 'DIGITUNDER') {
+                if (d < Number(prediction)) return 'is-green';
+                if (d > Number(prediction)) return 'is-red';
+                return 'is-neutral';
+            }
+        }
+        return '';
+    };
 
     useEffect(() => {
         // Initialize API connection and fetch active symbols
@@ -48,6 +74,7 @@ const SmartTrader = observer(() => {
                     .map((s: any) => ({ symbol: s.symbol, display_name: s.display_name }));
                 setSymbols(syn);
                 if (!symbol && syn[0]?.symbol) setSymbol(syn[0].symbol);
+                if (syn[0]?.symbol) startTicks(syn[0].symbol);
             } catch (e: any) {
                 // eslint-disable-next-line no-console
                 console.error('SmartTrader init error', e);
@@ -57,7 +84,18 @@ const SmartTrader = observer(() => {
         init();
 
         return () => {
-            try { api?.disconnect?.(); } catch { /* noop */ }
+            // Clean up streams and socket
+            try {
+                if (tickStreamIdRef.current) {
+                    apiRef.current?.forget({ forget: tickStreamIdRef.current });
+                    tickStreamIdRef.current = null;
+                }
+                if (messageHandlerRef.current) {
+                    apiRef.current?.connection?.removeEventListener('message', messageHandlerRef.current);
+                    messageHandlerRef.current = null;
+                }
+                api?.disconnect?.();
+            } catch { /* noop */ }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -76,6 +114,54 @@ const SmartTrader = observer(() => {
         }
         setIsAuthorized(true);
         setAccountCurrency(authorize?.currency || 'USD');
+    };
+
+    const stopTicks = () => {
+        try {
+            if (tickStreamIdRef.current) {
+                apiRef.current?.forget({ forget: tickStreamIdRef.current });
+                tickStreamIdRef.current = null;
+            }
+            if (messageHandlerRef.current) {
+                apiRef.current?.connection?.removeEventListener('message', messageHandlerRef.current);
+                messageHandlerRef.current = null;
+            }
+        } catch {}
+    };
+
+    const startTicks = async (sym: string) => {
+        stopTicks();
+        setDigits([]);
+        setLastDigit(null);
+        setTicksProcessed(0);
+        try {
+            const { tick_stream, error } = await apiRef.current.subscribe({ ticks: sym, subscribe: 1 });
+            if (error) throw error;
+            // Fallback handling: Deriv API returns { tick } messages on 'message' event
+            const onMsg = (evt: MessageEvent) => {
+                try {
+                    const data = JSON.parse(evt.data as any);
+                    if (data?.msg_type === 'tick' && data?.tick?.symbol === sym) {
+                        const quote = data.tick.quote;
+                        const digit = Number(String(quote).slice(-1));
+                        setLastDigit(digit);
+                        setDigits(prev => [...prev.slice(-8), digit]);
+                        setTicksProcessed(prev => prev + 1);
+                    }
+                    if (data?.forget?.id && data?.forget?.id === tickStreamIdRef.current) {
+                        // stopped
+                    }
+                } catch {}
+            };
+            messageHandlerRef.current = onMsg;
+            apiRef.current?.connection?.addEventListener('message', onMsg);
+
+            // Capture stream id from tick_stream if available
+            if (tick_stream?.id) tickStreamIdRef.current = tick_stream.id;
+        } catch (e: any) {
+            // eslint-disable-next-line no-console
+            console.error('startTicks error', e);
+        }
     };
 
     const onRun = async () => {
@@ -130,7 +216,11 @@ const SmartTrader = observer(() => {
                                 <select
                                     id='st-symbol'
                                     value={symbol}
-                                    onChange={e => setSymbol(e.target.value)}
+                                    onChange={e => {
+                                        const v = e.target.value;
+                                        setSymbol(v);
+                                        startTicks(v);
+                                    }}
                                 >
                                     {symbols.map(s => (
                                         <option key={s.symbol} value={s.symbol}>
@@ -191,6 +281,25 @@ const SmartTrader = observer(() => {
                                     />
                                 </div>
                             )}
+                        </div>
+
+                        <div className='smart-trader__digits'>
+                            {digits.map((d, idx) => (
+                                <div
+                                    key={`${idx}-${d}`}
+                                    className={`smart-trader__digit ${d === lastDigit ? 'is-current' : ''} ${getHintClass(d)}`}
+                                >
+                                    {d}
+                                </div>
+                            ))}
+                        </div>
+                        <div className='smart-trader__meta'>
+                            <Text size='xs' color='general'>
+                                {localize('Ticks Processed:')} {ticksProcessed}
+                            </Text>
+                            <Text size='xs' color='general'>
+                                {localize('Last Digit:')} {lastDigit ?? '-'}
+                            </Text>
                         </div>
 
                         <div className='smart-trader__actions'>

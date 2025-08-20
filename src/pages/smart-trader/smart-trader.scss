@@ -95,6 +95,41 @@
         }
     }
 
+    &__digits {
+        display: grid;
+        grid-template-columns: repeat(9, 1fr);
+        gap: 0.6rem;
+        margin-top: 0.4rem;
+
+        @media (max-width: 640px) {
+            grid-template-columns: repeat(6, 1fr);
+        }
+    }
+
+    &__digit {
+        height: 48px;
+        border-radius: 0.6rem;
+        background: var(--general-main-1);
+        border: 1px solid var(--border-normal);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: var(--text-prominent);
+        transition: background .2s ease, border-color .2s ease, transform .1s ease;
+
+        &.is-current { background: #fef3c7; border-color: #fbbf24; transform: scale(1.02); }
+        &.is-green { background: #e6f7ec; border-color: #34d399; }
+        &.is-red { background: #fee2e2; border-color: #f87171; }
+        &.is-neutral { background: #eef2ff; border-color: #a5b4fc; }
+    }
+
+    &__meta {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 0.6rem;
+    }
+
     &__status {
         margin-top: 0.4rem;
     }
