@@ -178,8 +178,6 @@ const SmartTrader = observer(() => {
             messageHandlerRef.current = onMsg;
             apiRef.current?.connection?.addEventListener('message', onMsg);
 
-            // Capture stream id from tick_stream if available
-            if (tick_stream?.id) tickStreamIdRef.current = tick_stream.id;
         } catch (e: any) {
             // eslint-disable-next-line no-console
             console.error('startTicks error', e);
