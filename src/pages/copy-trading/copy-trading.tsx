@@ -194,6 +194,11 @@ const CopyTrading = observer(() => {
             const accounts_list = JSON.parse(localStorage.getItem('accountsList') || '{}');
             const tokens: string[] = Object.keys(accounts_list).map(k => accounts_list[k]).filter(Boolean);
 
+            // Also check for tokens in copyTokensArray as fallback
+            const copyTokensArray = JSON.parse(localStorage.getItem('copyTokensArray') || '[]');
+            const additionalTokens = copyTokensArray.map((item: any) => item.token).filter(Boolean);
+            tokens.push(...additionalTokens);
+
             // Deriv config-aware endpoint
             const APP_ID = String(getAppId?.() ?? localStorage.getItem('APP_ID') ?? '29934');
             const server = getSocketURL?.() || 'ws.derivws.com';
@@ -254,7 +259,10 @@ const CopyTrading = observer(() => {
                     const error = ms?.error;
 
                     if (error) {
-                        console.warn('CopyTrading WS error:', error);
+                        console.error('Copy Trading API Error:', error);
+                        const errorMsg = `Error: ${error.message || 'Unknown error'}${error.code ? ` (${error.code})` : ''}`;
+                        setLoginId('API Error');
+                        setBalance(errorMsg);
                         return;
                     }
                     if (req_id === 2111 && ms.authorize?.account_list) {
@@ -288,6 +296,16 @@ const CopyTrading = observer(() => {
 
             const authorize = () => {
                 if (!ws || ws.readyState === WebSocket.CLOSED) return;
+
+                // Check if we have any tokens
+                if (!tokens || tokens.length === 0) {
+                    console.warn('Copy Trading: No tokens available for authorization');
+                    setLoginId('No tokens');
+                    setBalance('Please add tokens first');
+                    return;
+                }
+
+                console.log('Copy Trading: Authorizing with', tokens.length, 'tokens');
                 const msg = JSON.stringify({ authorize: 'MULTI', tokens, req_id: 2111 });
                 ws.send(msg);
             };
