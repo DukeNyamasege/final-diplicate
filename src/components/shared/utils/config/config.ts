@@ -28,8 +28,8 @@ export const domain_app_ids = {
     'www.kenyanhennessy.site': 97088,
     'kenyanhennessy.site': 97088,
     'masterhunter.site': 96223,
-    'developmentviewport.netlify.app/': 97311,
-    'www.developmentviewport.netlify.app/': 97311,
+    'developmentviewport.netlify.app': 97311,
+    'www.developmentviewport.netlify.app': 97311,
 
     
 
