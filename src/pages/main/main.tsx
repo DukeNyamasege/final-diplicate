@@ -40,6 +40,7 @@ const TradingView = lazy(() => import('../tradingview'));
 const AnalysisTool = lazy(() => import('../analysis-tool'));
 const Signals = lazy(() => import('../signals'));
 const CopyTrading = lazy(() => import('../copy-trading'));
+const SmartTrader = lazy(() => import('../smart-trader'));
 const Dtrader = lazy(() => import('../dtrader'));
 // Import FreeBots directly instead of lazy loading for faster access
 import FreeBots from '../free-bots';
@@ -74,7 +75,7 @@ const AppWrapper = observer(() => {
     const { clear } = summary_card;
     const { DASHBOARD, BOT_BUILDER } = DBOT_TABS;
     const init_render = React.useRef(true);
-    const hash = ['dashboard', 'bot_builder', 'chart', 'free_bots', 'copy_trading', 'dtrader'];
+    const hash = ['dashboard', 'bot_builder', 'chart', 'free_bots', 'copy_trading', 'smart_trader', 'dtrader'];
     const { isDesktop } = useDevice();
     const location = useLocation();
     const navigate = useNavigate();
@@ -322,6 +323,25 @@ const AppWrapper = observer(() => {
                                     }
                                 >
                                     <CopyTrading />
+                                </Suspense>
+                            </div>
+                            <div
+                                label={
+                                    <>
+                                        <LabelPairedPuzzlePieceTwoCaptionBoldIcon
+                                            height='24px'
+                                            width='24px'
+                                            fill='var(--text-general)'
+                                        />
+                                        <Localize i18n_default_text='Smart Trader' />
+                                    </>
+                                }
+                                id='id-smart-trader'
+                            >
+                                <Suspense
+                                    fallback={<ChunkLoader message={localize('Please wait, loading Smart Trader...')} />}
+                                >
+                                    <SmartTrader />
                                 </Suspense>
                             </div>
                             <div
