@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import Text from '@/components/shared_ui/text';
 import { localize } from '@deriv-com/translations';
 import { generateDerivApiInstance, V2GetActiveClientId, V2GetActiveToken } from '@/external/bot-skeleton/services/api/appId';
-import { tradeOptionToBuy } from '@/external/bot-skeleton/services/tradeEngine/utils/helpers';
+// import { tradeOptionToBuy } from '@/external/bot-skeleton/services/tradeEngine/utils/helpers';
 import { contract_stages } from '@/constants/contract-stage';
 import { useStore } from '@/hooks/useStore';
 import './smart-trader.scss';
@@ -17,6 +17,29 @@ const TRADE_TYPES = [
     { value: 'DIGITMATCH', label: 'Matches' },
     { value: 'DIGITDIFF', label: 'Differs' },
 ];
+// Safe version of tradeOptionToBuy without Blockly dependencies
+const tradeOptionToBuy = (contract_type: string, trade_option: any) => {
+    const buy = {
+        buy: '1',
+        price: trade_option.amount,
+        parameters: {
+            amount: trade_option.amount,
+            basis: trade_option.basis,
+            contract_type,
+            currency: trade_option.currency,
+            duration: trade_option.duration,
+            duration_unit: trade_option.duration_unit,
+            symbol: trade_option.symbol,
+        },
+    };
+    if (trade_option.prediction !== undefined) {
+        buy.parameters.selected_tick = trade_option.prediction;
+    }
+    if (!['TICKLOW', 'TICKHIGH'].includes(contract_type) && trade_option.prediction !== undefined) {
+        buy.parameters.barrier = trade_option.prediction;
+    }
+    return buy;
+};
 
 const SmartTrader = observer(() => {
     const store = useStore();
@@ -290,12 +313,8 @@ const SmartTrader = observer(() => {
                                     if (poc?.is_sold || poc?.status === 'sold') {
                                         run_panel.setContractStage(contract_stages.CONTRACT_CLOSED);
                                         run_panel.setHasOpenContract(false);
-                                        // update simple martingale tracker
-                                        const profit = Number(poc?.profit || 0);
-                                        if (profit > 0) { lossStreak = 0; step = 0; } else { lossStreak++; step = Math.min(step + 1, maxMartingaleSteps); }
                                         if (pocSubId) apiRef.current?.forget?.({ forget: pocSubId });
                                         apiRef.current?.connection?.removeEventListener('message', onMsg);
-                                        // decide next step
                                         const profit = Number(poc?.profit || 0);
                                         if (profit > 0) {
                                             lastOutcomeWasLossRef.current = false;
