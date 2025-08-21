@@ -53,6 +53,14 @@ const Xml = ({ ...props }) => {
 export const ToolboxItems = () =>
     ReactDomServer.renderToStaticMarkup(
         <Xml xmlns='http://www.w3.org/1999/xhtml' id='toolbox'>
+            <Category id='analysis_logics' name={localize('Analysis Logics 🔥')}>
+                <Block type='last_digits_condition' />
+                <Block type='digit_frequency' />
+                <Block type='even_odd_percent' />
+                <Block type='over_under_percent' />
+                <Block type='match_diff_percent' />
+                <Block type='rise_fall_percent' />
+            </Category>
             <Category id='trade_parameters' name={localize('Trade parameters')}>
                 <Block type='trade_definition'>
                     <Statement name='TRADE_OPTIONS'>
@@ -422,6 +430,19 @@ export const ToolboxItems = () =>
                     <Block type='total_profit' />
                     <Block type='total_runs' />
                 </Category>
+
+                <Category name={localize('Contract modifiers')} id='contract_modifiers'>
+                    <Block type='contract_type_switcher'>
+                        <Field name='STATUS'>DISABLE</Field>
+                    </Block>
+                    <Block type='custom_prediction_setter'>
+                        <Field name='PRED'>1</Field>
+                    </Block>
+                    <Block type='market_symbol_changer'>
+                        <Field name='STATUS'>DISABLE</Field>
+                    </Block>
+                </Category>
+
             </Category>
 
             <Category id='utility' name={localize('Utility')}>
