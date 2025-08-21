@@ -365,11 +365,6 @@ const SmartTrader = observer(() => {
     return (
         <div className='smart-trader'>
             <div className='smart-trader__container'>
-                <div className='smart-trader__header'>
-                    <Text size='xl' weight='bold' color='prominent'>
-                        {localize('Smart Trader')}
-                    </Text>
-                </div>
 
                 <div className='smart-trader__content'>
                     <div className='smart-trader__card'>
