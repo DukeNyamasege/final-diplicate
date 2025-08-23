@@ -74,6 +74,12 @@ const SmartTrader = observer(() => {
     const [ticksProcessed, setTicksProcessed] = useState<number>(0);
 
     const [status, setStatus] = useState<string>('');
+    // UI toggles and counters
+    const [altEvenOdd, setAltEvenOdd] = useState<boolean>(false);
+    const [altOnLoss, setAltOnLoss] = useState<boolean>(false);
+    const [consecWins, setConsecWins] = useState<number>(0);
+    const [consecLosses, setConsecLosses] = useState<number>(0);
+
     const [is_running, setIsRunning] = useState(false);
     const stopFlagRef = useRef<boolean>(false);
 
@@ -357,6 +363,7 @@ const SmartTrader = observer(() => {
         }
     };
 
+
     const onStop = () => {
         stopFlagRef.current = true;
         setIsRunning(false);
@@ -365,6 +372,21 @@ const SmartTrader = observer(() => {
     return (
         <div className='smart-trader'>
             <div className='smart-trader__container'>
+
+
+                <div className='smart-trader__topbar'>
+                    <div className='smart-trader__title'>
+                        {localize('Trade Every Tick')}
+                    </div>
+                    <div className='smart-trader__actions-inline'>
+                        <button type='button' className='smart-trader__chip smart-trader__chip--green'>
+                            {localize('Risk settings')}
+                        </button>
+                        <div className='smart-trader__balance'>
+                            {Number(store?.client?.balance || 0).toFixed(2)}
+                        </div>
+                    </div>
+                </div>
 
                 <div className='smart-trader__content'>
                     <div className='smart-trader__card'>
@@ -386,6 +408,23 @@ const SmartTrader = observer(() => {
                                         </option>
                                     ))}
                                 </select>
+
+                                <div className='smart-trader__row smart-trader__row--two smart-trader__toggles'>
+                                    <div className='smart-trader__toggle'>
+                                        <label>{localize('Alternate Even and Odd')}</label>
+                                        <label className='switch'>
+                                            <input type='checkbox' checked={altEvenOdd} onChange={e => setAltEvenOdd(e.target.checked)} />
+                                            <span className='slider round'></span>
+                                        </label>
+                                    </div>
+                                    <div className='smart-trader__toggle'>
+                                        <label>{localize('Alternate on Loss')}</label>
+                                        <label className='switch'>
+                                            <input type='checkbox' checked={altOnLoss} onChange={e => setAltOnLoss(e.target.checked)} />
+                                            <span className='slider round'></span>
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                             <div className='smart-trader__field'>
                                 <label htmlFor='st-tradeType'>{localize('Trade type')}</label>
@@ -473,28 +512,25 @@ const SmartTrader = observer(() => {
                                 </div>
                             ))}
                         </div>
-                        <div className='smart-trader__meta'>
-                            <Text size='xs' color='general'>
-                                {localize('Ticks Processed:')} {ticksProcessed}
-                            </Text>
-                            <Text size='xs' color='general'>
+                        <div className='smart-trader__footer-bar'>
+                            <div className='smart-trader__footer-item'>
+                                {localize('Total Profit/Loss:')} {Number(store?.summary_card?.profit || 0).toFixed(2)}
+                            </div>
+                            <div className='smart-trader__footer-item'>
                                 {localize('Last Digit:')} {lastDigit ?? '-'}
-                            </Text>
+                            </div>
+                            <div className='smart-trader__footer-item'>
+                                {localize('Consecutive Wins:')} {consecWins} {localize('Consecutive Losses:')} {consecLosses}
+                            </div>
                         </div>
 
-                        <div className='smart-trader__actions'>
-                            <button
-                                className='smart-trader__run'
-                                onClick={onRun}
-                                disabled={is_running || !symbol}
-                            >
-                                {is_running ? localize('Running...') : localize('Start Trading')}
+                        <div className='smart-trader__cta'>
+                            <button className='smart-trader__cta-once' onClick={() => onRun() } disabled={is_running || !symbol}>
+                                {localize('Trade once')}
                             </button>
-                            {is_running && (
-                                <button className='smart-trader__stop' onClick={onStop}>
-                                    {localize('Stop')}
-                                </button>
-                            )}
+                            <button className='smart-trader__cta-auto' onClick={onRun} disabled={is_running || !symbol}>
+                                {localize('Start auto trading')}
+                            </button>
                         </div>
 
                         {status && (

@@ -88,6 +88,70 @@ export default Engine =>
             return digits;
         }
 
+        // Analysis Logics helpers
+        async getLastDigitsCondition({ n = 3, op = 'LESS', digit = 0 } = {}) {
+            const list = await this.getLastDigitList();
+            const lastN = list.slice(-Number(n || 0));
+            const d = Number(digit);
+            const cmp = {
+                LESS: x => Number(x) < d,
+                LEQ: x => Number(x) <= d,
+                GREATER: x => Number(x) > d,
+                GEQ: x => Number(x) >= d,
+                EQ: x => Number(x) === d,
+                NEQ: x => Number(x) !== d,
+            }[op] || (x => Number(x) === d);
+            return lastN.every(cmp);
+        }
+
+        async getDigitFrequency({ rank = 'MOST', n = 1000 } = {}) {
+            const list = await this.getLastDigitList();
+            const lastN = list.slice(-Number(n || 0));
+            const freq = Array(10).fill(0);
+            lastN.forEach(val => {
+                const i = Number(val);
+                if (i >= 0 && i <= 9) freq[i]++;
+            });
+            const entries = freq.map((c, i) => ({ d: i, c }));
+            entries.sort((a, b) => b.c - a.c);
+            return rank === 'LEAST' ? entries[9].d : entries[0].d;
+        }
+
+        async getEvenOddPercent({ type = 'EVEN', n = 1000 } = {}) {
+            const list = await this.getLastDigitList();
+            const lastN = list.slice(-Number(n || 0));
+            const targetEven = type === 'EVEN';
+            const count = lastN.filter(x => (Number(x) % 2 === 0) === targetEven).length;
+            return Math.round((count / Math.max(1, lastN.length)) * 100);
+        }
+
+        async getOverUnderPercent({ threshold = 4, n = 1000, type = 'OVER' } = {}) {
+            const list = await this.getLastDigitList();
+            const lastN = list.slice(-Number(n || 0));
+            const over = lastN.filter(x => Number(x) > Number(threshold)).length;
+            const under = lastN.filter(x => Number(x) < Number(threshold)).length;
+            const val = type === 'UNDER' ? under : over;
+            return Math.round((val / Math.max(1, lastN.length)) * 100);
+        }
+
+        async getMatchDiffPercent({ type = 'MATCH', val = 5, n = 1000 } = {}) {
+            const list = await this.getLastDigitList();
+            const lastN = list.slice(-Number(n || 0));
+            const expectMatch = type === 'MATCH';
+            const d = Number(val);
+            const count = lastN.filter(x => (Number(x) === d) === expectMatch).length;
+            return Math.round((count / Math.max(1, lastN.length)) * 100);
+        }
+
+        async getRiseFallPercent({ type = 'RISE', n = 1000 } = {}) {
+            const ohlc = await this.getOhlc();
+            const lastN = (ohlc || []).slice(-Number(n || 0));
+            const rises = lastN.filter(o => Number(o.close) > Number(o.open)).length;
+            const falls = lastN.filter(o => Number(o.close) < Number(o.open)).length;
+            const pct = (type === 'RISE' ? rises : falls) / Math.max(1, lastN.length) * 100;
+            return Math.round(pct);
+        }
+
         checkDirection(dir) {
             return new Promise(resolve =>
                 this.$scope.ticksService
