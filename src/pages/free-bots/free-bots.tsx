@@ -34,6 +34,7 @@ const FreeBots = observer(() => {
             '360 PRINTER BOT____ [ Version 2.2 ].xml',
             'Candle-Mine Version 2  (2).xml',
             'DIFFERS KILLER BOT.xml',
+            'Digits Switcher Bot.xml',
             'DOLLAR  HUNTER BOT ORIGINAL UPDATED.xml',
             'Legoo-sniper-bot.xml',
             'MKOREAN SV6 BOT (1).xml',
